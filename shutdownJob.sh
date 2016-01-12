@@ -47,11 +47,7 @@ touch "$logdir"/jobFinished.flag
 
 # email notification
 cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job $SLURM_JOBID starting" tom
-	Shutdown requested with JobID $SLURM_JOBID starting at $(date) plus six minutes.
+	Shutdown requested with JobID $SLURM_JOBID is ready to run.
 _EOF_
 
-# wait 2m for wrapper to exit
-sleep 2m
-
-# wait 6 minutes and shut down
-shutdown -h +6
+exit 0

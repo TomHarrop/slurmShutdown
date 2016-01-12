@@ -31,7 +31,7 @@ leftovers=(""$logdir"/*.flag")
 for flagfile in "$leftovers"
 do
 	if [[ -e "$flagfile" ]]; then
-		echo -e "[ "$(date)" : removing leftover flag file "$flagfile" ]" >> "$logdir/log.wrapper.txt"
+		echo -e "[ "$(date)" : removing leftover flag file "$flagfile" ]"
 		rm "$flagfile"
 	fi
 done
@@ -41,10 +41,12 @@ shopt -u nullglob
 while [[ ! -e "$logdir/jobRun.flag" ]]; do
 
 	# submit shutdown job
+	echo -e "[ "$(date)" : submitting shutdownJob ]"
 	sbatch shutdownJob.sh 2>&1 | mail -s "[Tom@SLURM] Shutdown job submitted" tom
 	
 	# wait for jobRun to appear
 	while [[ ! -e "$logdir/jobRun.flag" ]]; do
+		echo -e "[ "$(date)" : waiting for jobRun.flag ]"
 		sleep 1m
 	done
 
@@ -54,13 +56,18 @@ while [[ ! -e "$logdir/jobRun.flag" ]]; do
 		# look for jobFinished
 		if [[ -e  "$logdir/jobFinished.flag" ]]; then
 			# if jobFinished exists, remove it and exit happily
+			echo -e "[ "$(date)" : found jobFinished.flag; performing shutdown ]"
 			rm ""$logdir"/jobFinished.flag"
+			rm ""$logdir"/jobRun.flag"
 			cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job running on SLURM" tom
-				Shutdown job has been launched by SLURM; wrapper is exiting.
+				Shutdown point reached in SLURM queue; performing shutdown.
 _EOF_
+			shutdown -h +2
 			exit 0
 		fi
 		# otherwise wait 1m and check both files again
+		echo -e "[ "$(date)" : waiting for jobFinished.flag ]"
 		sleep 1m
 	done
+	echo -e "[ "$(date)" : found jobFail.flag; resubmitting shutdownJob ]"
 done
