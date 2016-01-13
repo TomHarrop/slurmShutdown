@@ -1,13 +1,5 @@
 #!/bin/bash
 
-#SBATCH --cpus-per-task 8
-#SBATCH --nice=1000
-#SBATCH --exclusive
-#SBATCH --mail-type=ALL
-#SBATCH --job-name="shutdown"
-#SBATCH --output="/var/log/slurmShutdown/log.job.txt"
-#SBATCH --open-mode=append
-
 logdir="/var/log/slurmShutdown"
 
 # catch interruptions
@@ -15,23 +7,16 @@ clean_up() {
 	cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job $SLURM_JOBID CANCELLED" tom
 	Shutdown requested with JobID $SLURM_JOBID was cancelled at $(date).
 _EOF_
-	rm "$logdir"/jobRun.flag
-	touch "$logdir"/jobFail.flag
 	exit 1
 }
 trap clean_up SIGHUP SIGINT SIGTERM
 
-# touch jobRun
-touch "$logdir"/jobRun.flag
-
-# wait and check queue in case new jobs were added
-sleep 30
+# when job starts, wait and check queue in case other jobs were added
+sleep 1m
 
 # if jobs were added
 if [[ $(squeue -a | wc -l) -gt 2 ]]; then
-	# rm jobRun, create jobFail and exit
-	rm "$logdir"/jobRun.flag
-	touch "$logdir"/jobFail.flag
+	# exit 1 and mail notification
 	cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job $SLURM_JOBID did not run" tom
 	Shutdown requested with JobID $SLURM_JOBID did not run because other jobs were submitted.
 
@@ -40,12 +25,7 @@ _EOF_
 	exit 1
 fi
 
-# otherwise, queue is empty
-
-# create jobFinished flag
-touch "$logdir"/jobFinished.flag
-
-# email notification
+# otherwise, queue is empty. email notification and exit 0
 cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job $SLURM_JOBID starting" tom
 	Shutdown requested with JobID $SLURM_JOBID is ready to run.
 _EOF_

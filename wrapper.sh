@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set -eu
+set -u
 
-# make sure we have root
+# make sure we are root
 if [[ $EUID -ne 0 ]]; then
 	cat <<- _EOF_ | mail -s "[Tom@SLURM] UNABLE TO RUN shutdown job" tom
 	Shutdown wrapper was not submitted as root.
@@ -25,49 +25,24 @@ if [[ -d "$logdir" ]]; then
 	mkdir -p "$logdir"
 fi
 
-# check / remove leftover flags
-shopt -s nullglob
-leftovers=(""$logdir"/*.flag")
-for flagfile in "$leftovers"
-do
-	if [[ -e "$flagfile" ]]; then
-		echo -e "[ "$(date)" : removing leftover flag file "$flagfile" ]"
-		rm "$flagfile"
-	fi
+# run shutdown job with srun and wait for it to exit 0
+echo -e "[ "$(date)" : submitting shutdownJob2 with srun ]"
+cmd="/home/tom/Projects/slurmShutdown/shutdownJob2.sh"
+while ! srun --cpus-per-task=8 \
+	--nice=1000 \
+	--exclusive \
+	--mail-type=ALL \
+	--job-name="shutdown" \
+	--output="/var/log/slurmShutdown/log.job.txt" \
+	"$cmd" ; do
+	sleep 1m
+	echo -e "[ "$(date)" : shutdownJob2 failed, resubmitting ]"
 done
-shopt -u nullglob
 
-# enter loop if jobRun doesn't exist
-while [[ ! -e "$logdir/jobRun.flag" ]]; do
-
-	# submit shutdown job
-	echo -e "[ "$(date)" : submitting shutdownJob ]"
-	sbatch shutdownJob.sh 2>&1 | mail -s "[Tom@SLURM] Shutdown job submitted" tom
-	
-	# wait for jobRun to appear
-	while [[ ! -e "$logdir/jobRun.flag" ]]; do
-		echo -e "[ "$(date)" : waiting for jobRun.flag ]"
-		sleep 1m
-	done
-
-	# once jobRun appears, start jobFail/jobFinish loop
-	# while jobFail doesn't exist
-	while [[ ! -e "$logdir/jobFail.flag" ]]; do
-		# look for jobFinished
-		if [[ -e  "$logdir/jobFinished.flag" ]]; then
-			# if jobFinished exists, remove it and exit happily
-			echo -e "[ "$(date)" : found jobFinished.flag; performing shutdown ]"
-			rm ""$logdir"/jobFinished.flag"
-			rm ""$logdir"/jobRun.flag"
-			cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job running on SLURM" tom
-				Shutdown point reached in SLURM queue; performing shutdown.
+# if shutdownJob2 has exit state of 0 it is safe to shutdown
+echo -e "[ "$(date)" : shutdownJob2 succeeded, proceeding with shutdown ]"
+cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job completed" tom
+	Shutdown point reached in SLURM queue; performing shutdown.
 _EOF_
-			shutdown -h +2
-			exit 0
-		fi
-		# otherwise wait 1m and check both files again
-		echo -e "[ "$(date)" : waiting for jobFinished.flag ]"
-		sleep 1m
-	done
-	echo -e "[ "$(date)" : found jobFail.flag; resubmitting shutdownJob ]"
-done
+poweroff
+exit 0
