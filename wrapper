@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -u
+
+# setup
+script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+shutdown_script="${script_dir}/shutdown_job"
+mail_user="$(id -u -n)"
+
+# make sure we are root
+if [[ $EUID -ne 0 ]]; then
+    cat <<- _EOF_ | mail -s "[Tom@SLURM] UNABLE TO RUN shutdown job" \
+                        "${mail_user}"
+	Shutdown wrapper was not submitted as root.
+_EOF_
+	exit 1
+fi
+
+# catch interruptions
+clean_up() {
+    cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown wrapper EXITED" \
+                        "${mail_user}"
+	Shutdown wrapper exited at $(date).
+_EOF_
+    exit 1
+}
+trap clean_up SIGHUP SIGINT SIGTERM
+
+# make log dir
+logdir="/var/log/slurmShutdown"
+if [[ -d "$logdir" ]]; then
+    mkdir -p "$logdir"
+fi
+
+# run shutdown_job with srun and wait for it to exit 0
+printf "[ %s: submitting shutdown_job with srun\n" "$(date)"
+while ! srun --cpus-per-task=8 \
+    --nice=1000 \
+    --exclusive \
+    --job-name="shutdown" \
+    --output="/var/log/slurmShutdown/log.job.txt" \
+    "${shutdown_script}" ; do
+    printf "[ %s: shutdown_job failed, resubmitting\n" "$(date)"
+    sleep 1m
+done
+
+# if shutdown_job has exit state of 0 it is safe to shutdown
+printf "[ %s: shutdown_job succeeded, proceeding with shutdown\n" "$(date)"
+cat <<- _EOF_ | mail -s "[Tom@SLURM] Shutdown job completed" "${mail_user}"
+    Shutdown point reached in SLURM queue; performing shutdown.
+_EOF_
+poweroff && exit 0
