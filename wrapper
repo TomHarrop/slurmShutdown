@@ -7,6 +7,9 @@ script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 shutdown_script="${script_dir}/shutdown_job"
 mail_user="$(id -u -n)"
 
+printf "shutdown_script: %s\n" "${shutdown_script}"
+printf "      mail_user: %s\n" "${mail_user}"
+
 # make sure we are root
 if [[ $EUID -ne 0 ]]; then
     cat <<- _EOF_ | mail -s "[Tom@SLURM] UNABLE TO RUN shutdown job" \
